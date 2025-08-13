@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CoQuery: Querying with Copilots</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css" integrity="sha512-7kRAKXc+yEiZVqtl4YZ93k9VtzfNZt7QSboPbbGr3HdWu3UwG+329xNXm/SuKD5Vac/mswHxZ34rnOG0r8QwOw==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/eclipse.min.css" integrity="sha512-xcmBHQYaWV7k/akdUSHh3DquynjUTduVdJN9WewtG/XAIN5e8wZsM+dAf5BgU984wgKLF6ig84yYI6FqdtYYBQ==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+<style>
+ body { font-family: sans-serif; margin: 20px; }
+ #sql { height: 200px; border: 1px solid #ccc; }
+ #agent { width: 100%; height: 150px; }
+ #results { margin-top: 10px; }
+ table { border-collapse: collapse; }
+ th, td { border: 1px solid #ccc; padding: 4px; }
+ .controls { margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>CoQuery: Querying with Copilots</h1>
+<div>
+<label for="dbSelect">Database:</label>
+<select id="dbSelect">
+<option value="Chinook_Sqlite.sqlite">Chinook</option>
+<option value="AdventureWorks-sqlite.db">AdventureWorks</option>
+</select>
+<input type="text" id="apiKey" placeholder="Groq API Key" />
+</div>
+<textarea id="agent" placeholder="Agent responses appear here..."></textarea>
+<div id="sql"></div>
+<div class="controls">
+<button id="executeBtn">Execute</button>
+<button id="explainBtn">Explain</button>
+<button id="decomposeBtn">Decompose & Verify</button>
+<button id="clearBtn">Clear</button>
+</div>
+<div id="results"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js" integrity="sha512-k0MyoVo9hw3rroWAt4EvsC0BpvyEukgqS0bkkCm1cW0XkyRjO6jwxKF1u9IiMaivGi99ZTSdKCbFf8gDuwZDow==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js" integrity="sha512-PxfrN7kYMva9n32CuWHa3gwxObn2ymlk/wEYBLETymFcpnSUsctNk6heAQ7Ez+KQEiC5EvhczHxVn9Yx8RJWbQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script type="module" src="./script.js"></script>
+</body>
+</html>
