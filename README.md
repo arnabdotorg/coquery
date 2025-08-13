@@ -1,0 +1,2 @@
+# coquery
+Querying with Copilots
