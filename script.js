@@ -562,7 +562,9 @@ ORDER BY
                         }
                     ],
                     tool_config: {
-                        "mode": "NONE"
+                      "function_calling_config": {
+                         "mode": "NONE"
+                      }
                     },
                     generationConfig: {
                         temperature: 0.3,
