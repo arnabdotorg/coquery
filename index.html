@@ -1,58 +1,287 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>CoQuery: Querying with Copilots</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css" integrity="sha256-yvyvvXvGmqRm0k/FrKsTH2UfxkbLa9HeUlRNZbojLhM=" crossorigin="anonymous">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css" integrity="sha512-7kRAKXc+yEiZVqtl4YZ93k9VtzfNZt7QSboPbbGr3HdWu3UwG+329xNXm/SuKD5Vac/mswHxZ34rnOG0r8QwOw==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/eclipse.min.css" integrity="sha512-xcmBHQYaWV7k/akdUSHh3DquynjUTduVdJN9WewtG/XAIN5e8wZsM+dAf5BgU984wgKLF6ig84yYI6FqdtYYBQ==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
-<style>
-  #sql { height: 200px; border: 1px solid #ccc; }
-  #log {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    width: 300px;
-    height: 150px;
-    z-index: 1000;
-    overflow: auto;
-    resize: none;
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoQuery: AI-Powered SQL Editor</title>
+    
+    <!-- Tabler CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/tabler-icons@1.35.0/iconfont/tabler-icons.min.css">
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css">
+    
+    <style>
+        .cm-editor { height: 200px; }
+        .schema-card { max-height: 300px; overflow-y: auto; transition: max-height 0.3s ease; }
+        .schema-card.collapsed { max-height: 0; overflow: hidden; }
+        .results-table { max-height: 400px; overflow-y: auto; }
+        .agent-response { white-space: pre-wrap; }
+        .agent-response.markdown-content { 
+            white-space: normal; 
+            line-height: 1.6;
+        }
+        .agent-response.markdown-content h1,
+        .agent-response.markdown-content h2,
+        .agent-response.markdown-content h3,
+        .agent-response.markdown-content h4,
+        .agent-response.markdown-content h5,
+        .agent-response.markdown-content h6 {
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .agent-response.markdown-content p {
+            margin-bottom: 0.75rem;
+        }
+        .agent-response.markdown-content code {
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875em;
+        }
+        .agent-response.markdown-content pre {
+            background-color: #f3f4f6;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+        }
+        .agent-response.markdown-content pre code {
+            background: none;
+            padding: 0;
+        }
+        .agent-response.markdown-content ul,
+        .agent-response.markdown-content ol {
+            margin-bottom: 0.75rem;
+            padding-left: 1.5rem;
+        }
+        .agent-response.markdown-content li {
+            margin-bottom: 0.25rem;
+        }
+        .decomposed-parts { max-height: 300px; overflow-y: auto; }
+        .error-log { max-height: 300px; overflow-y: auto; }
+        .error-item { 
+            padding: 8px; 
+            margin-bottom: 8px; 
+            border-radius: 4px; 
+            border-left: 4px solid #d63939;
+            background-color: #fef2f2;
+        }
+        .error-item.error { 
+            border-left-color: #d63939;
+            background-color: #fef2f2;
+        }
+        .error-item.warning { 
+            border-left-color: #f59e0b;
+            background-color: #fffbeb;
+        }
+        .error-item.info { 
+            border-left-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        .error-timestamp { 
+            font-size: 0.75rem; 
+            color: #6b7280; 
+            margin-bottom: 4px; 
+        }
+        .error-message { 
+            font-size: 0.875rem; 
+            color: #1f2937; 
+        }
+        .card-actions { margin-left: auto; }
+    </style>
 </head>
 <body class="theme-light">
-<div class="container-xl py-3">
-  <h1 class="mb-4">CoQuery: Querying with Copilots</h1>
-  <div class="row g-3 mb-3">
-    <div class="col-sm-4">
-      <label for="dbSelect" class="form-label">Database</label>
-      <select id="dbSelect" class="form-select">
-        <option value="Chinook_Sqlite.sqlite">Chinook</option>
-        <option value="AdventureWorks-sqlite.db">AdventureWorks</option>
-      </select>
+    <div class="page">
+        <!-- Header -->
+        <header class="navbar navbar-expand-md navbar-light d-print-none">
+            <div class="container-xl">
+                <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
+                    <i class="ti ti-database"></i>
+                    CoQuery: AI-Powered SQL Editor
+                </h1>
+            </div>
+        </header>
+
+        <div class="page-wrapper">
+            <div class="container-xl">
+
+
+                <div class="row g-3">
+                    <!-- Left Column: Schema and SQL Editor -->
+                    <div class="col-lg-8">
+                        <!-- Schema Display -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-table"></i>
+                                    Database Schema
+                                </h3>
+                                <div class="card-actions">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <select id="dbSelect" class="form-select form-select-sm" style="width: auto;">
+                                            <option value="Chinook_Sqlite.sqlite">Chinook</option>
+                                            <option value="AdventureWorks-sqlite.db">AdventureWorks</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-light" type="button" id="toggleSchema">
+                                            <i class="ti ti-chevron-up"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body schema-card" id="schemaBody">
+                                <div id="schema" class="text-muted">Select a database to view schema...</div>
+                            </div>
+                        </div>
+
+                        <!-- SQL Editor -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-code"></i>
+                                    SQL Query
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="sqlEditor"></div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="btn-list mb-3">
+                            <button id="executeBtn" class="btn btn-primary">
+                                <i class="ti ti-play"></i>
+                                Execute
+                            </button>
+                            <button id="explainBtn" class="btn btn-secondary">
+                                <i class="ti ti-info-circle"></i>
+                                Explain
+                            </button>
+                            <button id="decomposeBtn" class="btn btn-secondary">
+                                <i class="ti ti-puzzle"></i>
+                                Decompose & Verify
+                            </button>
+                            <button id="clearBtn" class="btn btn-light">
+                                <i class="ti ti-trash"></i>
+                                Clear
+                            </button>
+                        </div>
+
+                        <!-- Results -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-table"></i>
+                                    Query Results
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="results" class="results-table">
+                                    <p class="text-muted">Execute a query to see results...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: AI Agent -->
+                    <div class="col-lg-4">
+                        <!-- API Key Card -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-key"></i>
+                                    Google AI API Key
+                                </h3>
+                                <div class="card-actions">
+                                    <button class="btn btn-sm btn-light" type="button" id="clearApiKeyBtn">
+                                        <i class="ti ti-trash"></i>
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="input-group">
+                                    <input type="password" id="apiKey" class="form-control" placeholder="Enter your Gemini API key">
+                                    <button class="btn btn-outline-secondary" type="button" id="toggleKey">
+                                        <i class="ti ti-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text mt-2">
+                                    <a href="https://aistudio.google.com/" target="_blank" class="text-decoration-underline">
+                                        <i class="ti ti-external-link"></i>
+                                        Get your API key from Google AI Studio
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-brain"></i>
+                                    LLM-generated Explanations
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="agentResponse" class="agent-response text-muted">
+                                    Ready to help with your SQL queries...
+                                </div>
+                                
+                                <div id="decomposedParts" class="decomposed-parts mt-3" style="display: none;">
+                                    <h6>Decomposed Parts:</h6>
+                                    <div id="partsList"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- System Log -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-list"></i>
+                                    System Log
+                                </h3>
+                                <div class="card-actions">
+                                    <button id="clearErrorsBtn" class="btn btn-sm btn-light">
+                                        <i class="ti ti-trash"></i>
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="errorLog" class="error-log">
+                                    <p class="text-muted">No system messages logged yet...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Walkthrough -->
+                <div class="mt-4">
+                    <div class="alert alert-info">
+                        <h4 class="alert-title">Getting Started</h4>
+                        <p class="mb-0">
+                            Try it: The SQL editor now contains a complex query involving 4 tables, 2 EXISTS clauses, and nested subqueries. Press <strong>Execute</strong> to see customers who bought Queen tracks, supported by Sales Support Agents, with multiple invoices.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="col-sm-4">
-      <label for="apiKey" class="form-label">Groq API Key</label>
-      <input type="text" id="apiKey" class="form-control" placeholder="Groq API Key" />
-    </div>
-  </div>
-  <div id="schema" class="mb-3 card p-2"></div>
-  <div class="mb-3">
-    <textarea id="agent" class="form-control" placeholder="Agent responses appear here..." rows="5"></textarea>
-  </div>
-  <div id="sql" class="mb-3"></div>
-  <div class="btn-list mb-3">
-    <button id="executeBtn" class="btn btn-primary">Execute</button>
-    <button id="explainBtn" class="btn btn-secondary">Explain</button>
-    <button id="decomposeBtn" class="btn btn-secondary">Decompose &amp; Verify</button>
-    <button id="clearBtn" class="btn btn-light">Clear</button>
-  </div>
-  <div id="results" class="mb-3"></div>
-  <p id="walkthrough" class="text-muted">Try it: select the Chinook database, type <code>SELECT name FROM artists LIMIT 5;</code> in the SQL editor, then press <strong>Execute</strong>.</p>
-</div>
-<textarea id="log" class="form-control" readonly></textarea>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js" integrity="sha512-k0MyoVo9hw3rroWAt4EvsC0BpvyEukgqS0bkkCm1cW0XkyRjO6jwxKF1u9IiMaivGi99ZTSdKCbFf8gDuwZDow==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js" integrity="sha512-PxfrN7kYMva9n32CuWHa3gwxObn2ymlk/wEYBLETymFcpnSUsctNk6heAQ7Ez+KQEiC5EvhczHxVn9Yx8RJWbQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script type="module" src="./script.js"></script>
+
+    <!-- Scripts -->
+    <script src="./sql-wasm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/selection/active-line.min.js"></script>
+    
+    <script src="./script.js"></script>
 </body>
 </html>
