@@ -495,7 +495,7 @@ ORDER BY
     }
 
     async explainQuery() {
-        await this.callAI('explain', 'Explain this SQL query in detail, breaking down what each part does and how it works:');
+        await this.callAI('explain', 'Explain this SQL query in 1-3 sentences, breaking down what each part does and how it works:');
     }
 
     async decomposeQuery() {
@@ -563,7 +563,7 @@ ORDER BY
                     ],
                     generationConfig: {
                         temperature: 0.3,
-                        maxOutputTokens: 1000,
+                        maxOutputTokens: 8192,
                         topP: 0.8,
                         topK: 40
                     }
