@@ -561,6 +561,9 @@ ORDER BY
                             ]
                         }
                     ],
+                    tool_config: {
+                        "mode": "NONE"
+                    },
                     generationConfig: {
                         temperature: 0.3,
                         maxOutputTokens: 8192,
