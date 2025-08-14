@@ -588,49 +588,11 @@ ORDER BY
                 throw new Error(`Invalid response data type: ${typeof data}`);
             }
             
-            // Try different response formats
-            let text = null;
-            
-            // Log the full response structure for debugging
-            console.log('Full Gemini response structure:', JSON.stringify(data, null, 2));
-            
-            // Check for the standard Gemini response format
-            if (data.candidates && data.candidates.length > 0) {
-                const candidate = data.candidates[0];
-                console.log('First candidate:', candidate);
-                
-                if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-                    const part = candidate.content.parts[0];
-                    console.log('First part:', part);
-                    
-                    if (part.text) {
-                        text = part.text;
-                        console.log('Found text in part.text:', text);
-                    } else if (typeof part === 'string') {
-                        text = part;
-                        console.log('Found text in part (string):', text);
-                    }
-                } else if (candidate.content && typeof candidate.content === 'string') {
-                    text = candidate.content;
-                    console.log('Found text in candidate.content (string):', candidate.content);
-                } else if (candidate.text) {
-                    text = candidate.text;
-                    console.log('Found text in candidate.text:', candidate.text);
-                }
-            }
-            
-            // Fallback checks
-            if (!text && data.text) {
-                text = data.text;
-                console.log('Found text in data.text:', text);
-            }
-            
-            if (!text && data.content) {
-                text = data.content;
-                console.log('Found text in data.content:', text);
-            }
-            
-            if (!text) {
+            // The response structure should be:
+            // { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (typeof text !== 'string') {
                 console.log('No text found in response, full data:', data);
                 this.logSystem(`No text found in Gemini response. Response structure: ${JSON.stringify(data, null, 2)}`, 'warning');
                 return 'Gemini AI responded but no text content was found. Please check the system log for details.';
