@@ -694,7 +694,7 @@ ORDER BY
                 this.editor.setValue(newSql);
                 this.flashEditor();
                 this.addToHistory(newSql);
-                this.updateAgentResponse(`Here is the updated SQL query:\n\n\`\`\`sql\n${newSql}\n\`\`\``);
+                this.updateAgentResponse('SQL inserted into editor.');
             } else {
                 this.updateAgentResponse('No SQL generated.');
             }
