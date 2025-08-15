@@ -6,6 +6,8 @@ class CoQuery {
         this.currentDatabase = null;
         this.apiKey = null;
         this.model = 'gemini-2.5-flash';
+        this.queryHistory = [];
+        this.historyIndex = -1;
         
         this.init();
     }
@@ -142,6 +144,9 @@ class CoQuery {
         document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
         document.getElementById('clearErrorsBtn').addEventListener('click', () => this.clearSystemLog());
         document.getElementById('clearApiKeyBtn').addEventListener('click', () => this.clearApiKey());
+        document.getElementById('generateSqlBtn').addEventListener('click', () => this.generateSQLFromPrompt());
+        document.getElementById('prevQueryBtn').addEventListener('click', () => this.showPreviousQuery());
+        document.getElementById('nextQueryBtn').addEventListener('click', () => this.showNextQuery());
     }
 
     initializeCodeMirror() {
@@ -186,6 +191,7 @@ LIMIT 10;`,
 
         // Auto-resize editor
         this.editor.setSize('100%', '200px');
+        this.addToHistory(this.editor.getValue());
     }
 
     async loadSqlJs() {
@@ -417,6 +423,7 @@ ORDER BY
         }
 
         try {
+            this.addToHistory(sql);
             this.updateAgentResponse('Executing query... ⚡');
             
             const startTime = performance.now();
@@ -615,6 +622,114 @@ ORDER BY
             console.error('Gemini API call error:', error);
             this.logSystem(`Gemini API call error: ${error.message}`, 'error');
             throw error;
+        }
+    }
+
+    async callGeminiForSQL(apiKey, userPrompt, existingSql) {
+        try {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+            const body = {
+                contents: [
+                    {
+                        parts: [
+                            {
+                                text: `You are an expert SQL developer. Given the existing SQL query and the user's instruction, return the revised SQL query only.\n\nUser Instruction:\n${userPrompt}\n\nExisting SQL Query:\n${existingSql}`
+                            }
+                        ]
+                    }
+                ],
+                tool_config: {
+                    function_calling_config: { mode: 'NONE' }
+                },
+                generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 8192,
+                    topP: 0.8,
+                    topK: 40
+                }
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(`Gemini API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            }
+
+            const data = await response.json();
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+            // Extract SQL from code block if present
+            const match = text.match(/```sql\n([\s\S]*?)```/i);
+            return match ? match[1].trim() : text.trim();
+        } catch (error) {
+            console.error('Gemini SQL generation error:', error);
+            this.logSystem(`Gemini SQL generation error: ${error.message}`, 'error');
+            throw error;
+        }
+    }
+
+    async generateSQLFromPrompt() {
+        const userPrompt = document.getElementById('sqlPrompt').value.trim();
+        const existingSql = this.editor.getValue();
+        if (!userPrompt) {
+            this.updateAgentResponse('Please enter a prompt to generate SQL.');
+            return;
+        }
+
+        const apiKey = document.getElementById('apiKey').value.trim();
+        if (!apiKey) {
+            this.updateAgentResponse('Please enter your API key to use AI features.');
+            return;
+        }
+
+        try {
+            this.updateAgentResponse('🤖 Generating SQL...');
+            const newSql = await this.callGeminiForSQL(apiKey, userPrompt, existingSql);
+            if (newSql) {
+                this.editor.setValue(newSql);
+                this.flashEditor();
+                this.addToHistory(newSql);
+                this.updateAgentResponse(`Here is the updated SQL query:\n\n\`\`\`sql\n${newSql}\n\`\`\``);
+            } else {
+                this.updateAgentResponse('No SQL generated.');
+            }
+        } catch (error) {
+            this.updateAgentResponse(`SQL generation failed: ${error.message}`);
+        }
+    }
+
+    flashEditor() {
+        const el = this.editor.getWrapperElement();
+        el.classList.add('sql-update-flash');
+        setTimeout(() => el.classList.remove('sql-update-flash'), 800);
+    }
+
+    addToHistory(sql) {
+        if (!sql) return;
+        if (this.queryHistory.length === 0 || this.queryHistory[this.queryHistory.length - 1] !== sql) {
+            this.queryHistory.push(sql);
+            this.historyIndex = this.queryHistory.length - 1;
+        }
+    }
+
+    showPreviousQuery() {
+        if (this.historyIndex > 0) {
+            this.historyIndex--;
+            const sql = this.queryHistory[this.historyIndex];
+            this.editor.setValue(sql);
+        }
+    }
+
+    showNextQuery() {
+        if (this.historyIndex < this.queryHistory.length - 1) {
+            this.historyIndex++;
+            const sql = this.queryHistory[this.historyIndex];
+            this.editor.setValue(sql);
         }
     }
 
