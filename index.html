@@ -92,6 +92,13 @@
             color: #1f2937; 
         }
         .card-actions { margin-left: auto; }
+        .sql-update-flash {
+            animation: sql-flash 0.8s;
+        }
+        @keyframes sql-flash {
+            0% { background-color: #fff3cd; filter: blur(2px); }
+            100% { background-color: transparent; filter: blur(0); }
+        }
     </style>
 </head>
 <body class="theme-light">
@@ -139,11 +146,19 @@
 
                         <!-- SQL Editor -->
                         <div class="card mb-3">
-                            <div class="card-header">
-                                <h3 class="card-title">
+                            <div class="card-header d-flex align-items-center">
+                                <h3 class="card-title me-auto">
                                     <i class="ti ti-code"></i>
                                     SQL Query
                                 </h3>
+                                <div class="card-actions">
+                                    <button id="prevQueryBtn" class="btn btn-sm btn-light" type="button">
+                                        <i class="ti ti-chevron-left"></i>
+                                    </button>
+                                    <button id="nextQueryBtn" class="btn btn-sm btn-light" type="button">
+                                        <i class="ti ti-chevron-right"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="card-body">
                                 <div id="sqlEditor"></div>
@@ -215,6 +230,22 @@
                                         Get your API key from Google AI Studio
                                     </a>
                                 </div>
+                            </div>
+                        </div>
+                        <!-- LLM SQL Generator Card -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="ti ti-wand"></i>
+                                    Ask LLM to Write/Edit SQL
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <textarea id="sqlPrompt" class="form-control" rows="3" placeholder="Describe the SQL you need or how to modify the current query..."></textarea>
+                                <button id="generateSqlBtn" class="btn btn-primary w-100 mt-2" type="button">
+                                    <i class="ti ti-wand"></i>
+                                    Generate SQL
+                                </button>
                             </div>
                         </div>
 
