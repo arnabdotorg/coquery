@@ -1,7 +1,8 @@
 # coquery
 
 CoQuery is a minimal vibe-coded SQL playground powered by SQLite WASM and Google Gemini
-language models. There is no backend, everything is in the webpage frontend.  
+language models. 
+There is no backend, everything is in the webpage frontend.  
 It ships with two sample databases (Chinook and
 AdventureWorks) and exposes four actions:
 
