@@ -23,4 +23,9 @@ browser using the bundled SQLite databases from the `data/` directory.
 The interface uses CodeMirror for SQL editing and `sql.js` for the WASM
 SQLite engine.
 
+## Future Work
+
+This is very much a quick initial experiment with a million extension possibilities. If you like working on this type of stuff, come work with me!
+
 <img width="986" height="811" alt="image" src="https://github.com/user-attachments/assets/4bebd96c-554f-4e93-96ec-1e92a5ce1212" />
+
