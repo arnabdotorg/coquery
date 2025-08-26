@@ -13,6 +13,9 @@ AdventureWorks) and exposes four actions:
   steps and verify each part.
 * **NL2SQL** – Ask Gemini to convert your natural language to SQL
 
+## Demo
+You can try it out at https://arnabdotorg.github.io/coquery/
+
 ## Running
 
 Open `index.html` in a browser.  Supply your `gemini_api_key` in the text
