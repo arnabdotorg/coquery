@@ -4,13 +4,11 @@ CoQuery is a minimal vibe-coded SQL playground powered by SQLite WASM and Google
 language models. 
 There is no backend, everything is in the webpage frontend.  
 It ships with two sample databases (Chinook and
-AdventureWorks) and exposes four actions:
+AdventureWorks) and exposes simple actions:
 
 * **Execute** – run the current SQL against the selected database.
 * **Explain** – send the SQL to Gemini for a natural‑language
   explanation.
-* **Decompose & Verify** – ask Gemini to break the query into logical
-  steps and verify each part.
 * **NL2SQL** – Ask Gemini to convert your natural language to SQL
 
 ## Demo
