@@ -81,9 +81,9 @@ class CoQuery {
             const hasSavedKey = this.loadApiKey();
             
             if (hasSavedKey) {
-                this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nAPI key loaded from storage. You can use Explain and Decompose features.');
+                this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nAPI key loaded from storage. You can use Explain and NL2SQL features.');
             } else {
-                this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and Decompose features.');
+                this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and NL2SQL features.');
             }
         } catch (error) {
             console.error('Initialization error:', error);
@@ -140,7 +140,7 @@ class CoQuery {
         // Action buttons
         document.getElementById('executeBtn').addEventListener('click', () => this.executeQuery());
         document.getElementById('explainBtn').addEventListener('click', () => this.explainQuery());
-        document.getElementById('decomposeBtn').addEventListener('click', () => this.decomposeQuery());
+
         document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
         document.getElementById('clearErrorsBtn').addEventListener('click', () => this.clearSystemLog());
         document.getElementById('clearApiKeyBtn').addEventListener('click', () => this.clearApiKey());
@@ -505,10 +505,6 @@ ORDER BY
         await this.callAI('explain', 'Explain this SQL query in 1-3 sentences, breaking down what each part does and how it works:');
     }
 
-    async decomposeQuery() {
-        await this.callAI('decompose', 'Decompose this SQL query into its logical components and verify each step. Provide a step-by-step breakdown:');
-    }
-
     async callAI(action, prompt) {
         const sql = this.editor.getValue().trim();
         if (!sql) {
@@ -530,10 +526,6 @@ ORDER BY
             // Ensure response is a string
             if (!response || typeof response !== 'string') {
                 throw new Error(`Invalid response from Gemini API: ${typeof response}`);
-            }
-            
-            if (action === 'decompose') {
-                this.displayDecomposedParts(response);
             }
             
             this.updateAgentResponse(response);
@@ -862,7 +854,7 @@ ORDER BY
         this.editor.setValue('');
         document.getElementById('results').innerHTML = '<p class="text-muted">Execute a query to see results...</p>';
         document.getElementById('decomposedParts').style.display = 'none';
-        this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and Decompose features.');
+        this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and NL2SQL features.');
     }
 }
 
