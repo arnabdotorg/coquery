@@ -95,7 +95,15 @@ class CoQuery {
     setupEventListeners() {
         // Database selection
         document.getElementById('dbSelect').addEventListener('change', (e) => {
-            this.loadDatabase(e.target.value);
+            console.log('Database selection changed to:', e.target.value);
+            this.logSystem(`Switching to database: ${e.target.value}`, 'info');
+            
+            // For TPC-DS, try embedded database directly first
+            if (e.target.value === 'tpcds.db' && typeof loadEmbeddedTpcds !== 'undefined') {
+                this.loadEmbeddedDatabaseDirectly(e.target.value);
+            } else {
+                this.loadDatabase(e.target.value);
+            }
         });
 
         // API key toggle
@@ -201,26 +209,35 @@ LIMIT 10;`,
                 throw new Error('SQL.js WASM initialization function not found. Make sure sql-wasm.js is loaded.');
             }
             
-            // Check if WASM file is accessible
-            try {
-                const wasmResponse = await fetch('./sql-wasm.wasm');
-                if (!wasmResponse.ok) {
-                    throw new Error(`WASM file not accessible: ${wasmResponse.status}`);
-                }
-                console.log('WASM file is accessible');
-            } catch (wasmError) {
-                console.warn('WASM file check failed:', wasmError);
-            }
-            
             console.log('Initializing SQL.js WASM...');
             this.logSystem('Initializing SQL.js WASM...', 'info');
             
-            this.SQL = await window.initSqlJs({
-                locateFile: file => {
-                    console.log('Looking for file:', file);
-                    return `./${file}`;
-                }
-            });
+            // Try different initialization strategies
+            let initOptions = {};
+            
+            // Check if we're using file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.log('File protocol detected, using CDN WASM');
+                initOptions = {
+                    locateFile: file => {
+                        if (file.endsWith('.wasm')) {
+                            // Use CDN for WASM file when using file:// protocol
+                            return `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`;
+                        }
+                        return `./${file}`;
+                    }
+                };
+            } else {
+                console.log('HTTP protocol detected, using local WASM');
+                initOptions = {
+                    locateFile: file => {
+                        console.log('Looking for file:', file);
+                        return `./${file}`;
+                    }
+                };
+            }
+            
+            this.SQL = await window.initSqlJs(initOptions);
             
             console.log('SQL.js WASM loaded successfully:', this.SQL);
             this.logSystem('SQL.js WASM loaded successfully', 'info');
@@ -237,16 +254,87 @@ LIMIT 10;`,
         }
     }
 
+    async loadEmbeddedDatabaseDirectly(dbPath) {
+        try {
+            console.log('Loading TPC-DS via embedded database...');
+            this.updateAgentResponse('Loading TPC-DS database (embedded)...');
+            
+            // Ensure SQL.js is loaded
+            if (!this.SQL || !this.SQL.Database) {
+                console.log('Initializing SQL.js...');
+                await this.loadSqlJs();
+            }
+            
+            if (!this.SQL || !this.SQL.Database) {
+                throw new Error('SQL.js failed to initialize');
+            }
+            
+            if (typeof loadEmbeddedDatabaseDirectly === 'undefined') {
+                throw new Error('Embedded database not available');
+            }
+            
+            // Load embedded database
+            console.log('Loading embedded TPC-DS database...');
+            this.db = loadEmbeddedDatabaseDirectly();
+            
+            if (!this.db) {
+                throw new Error('Failed to create database from embedded data');
+            }
+            
+            this.currentDatabase = dbPath;
+            
+            // Verify the database
+            const testQuery = this.db.exec("SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'");
+            if (testQuery && testQuery.length > 0) {
+                const tableCount = testQuery[0].values[0][0];
+                console.log(`Embedded TPC-DS loaded with ${tableCount} tables`);
+                this.logSystem(`Embedded TPC-DS database loaded with ${tableCount} tables`, 'info');
+            }
+            
+            // Display schema and set default query
+            this.displaySchema();
+            this.updateAgentResponse(`✅ TPC-DS database loaded successfully!\n\nUsing embedded database - no server required! 📊`);
+            this.setDefaultQuery(dbPath);
+            
+        } catch (error) {
+            console.error('Direct embedded loading failed:', error);
+            this.logSystem(`Direct embedded loading failed: ${error.message}`, 'error');
+            
+            // Fall back to regular loading method
+            this.updateAgentResponse(`Embedded loading failed, trying other methods...`);
+            this.loadDatabase(dbPath);
+        }
+    }
+
     async loadDatabase(dbPath) {
         try {
             console.log(`Attempting to load database: ${dbPath}`);
             this.updateAgentResponse(`Loading database: ${dbPath}...`);
             
-            const response = await fetch(`data/${dbPath}`);
-            console.log('Fetch response:', response);
+            // Try different paths in case of server configuration issues
+            let response;
+            const paths = [
+                `data/${dbPath}`,
+                `./data/${dbPath}`,
+                `/data/${dbPath}`,
+                `${window.location.origin}/data/${dbPath}`
+            ];
             
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            for (const path of paths) {
+                try {
+                    console.log(`Trying path: ${path}`);
+                    response = await fetch(path);
+                    if (response.ok) {
+                        console.log(`Success with path: ${path}`);
+                        break;
+                    }
+                } catch (e) {
+                    console.log(`Failed with path ${path}: ${e.message}`);
+                }
+            }
+            
+            if (!response || !response.ok) {
+                throw new Error(`Failed to fetch database from any path. Last status: ${response?.status || 'N/A'}`);
             }
             
             const buffer = await response.arrayBuffer();
@@ -257,12 +345,22 @@ LIMIT 10;`,
             }
             
             console.log('Creating SQL database instance...');
-            this.db = new this.SQL.Database(new Uint8Array(buffer));
+            const uint8Array = new Uint8Array(buffer);
+            console.log(`Creating database from Uint8Array of size: ${uint8Array.length}`);
+            
+            this.db = new this.SQL.Database(uint8Array);
             this.currentDatabase = dbPath;
+            
+            // Verify the database is working
+            const testQuery = this.db.exec("SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'");
+            if (testQuery && testQuery.length > 0) {
+                const tableCount = testQuery[0].values[0][0];
+                console.log(`Database loaded with ${tableCount} tables`);
+                this.logSystem(`Database ${dbPath} loaded with ${tableCount} tables`, 'info');
+            }
             
             console.log('Database created successfully, displaying schema...');
             this.displaySchema();
-            this.logSystem(`Database ${dbPath} loaded successfully`, 'info');
             this.updateAgentResponse(`Database ${dbPath} loaded successfully! 📊`);
             
             // Set appropriate default query based on database
@@ -270,7 +368,192 @@ LIMIT 10;`,
         } catch (error) {
             console.error('Database loading error:', error);
             this.logSystem(`Database loading error: ${error.message}`, 'error');
-            this.updateAgentResponse(`Error loading database: ${error.message}`);
+            
+            // Provide helpful error message and fallback option
+            let helpMessage = `Error loading database: ${error.message}\n\n`;
+            
+            if (error.message.includes('404') || error.message.includes('Failed to fetch')) {
+                // Try embedded database first for TPC-DS
+                if (dbPath === 'tpcds.db' && typeof loadEmbeddedDatabaseDirectly !== 'undefined') {
+                    helpMessage += 'Trying embedded TPC-DS database...\n\n';
+                    this.updateAgentResponse(helpMessage);
+                    // Use setTimeout to make this async call non-blocking
+                    setTimeout(() => this.tryEmbeddedDatabase(dbPath), 100);
+                    return; // Exit early, tryEmbeddedDatabase will handle success/failure
+                } else {
+                    helpMessage += 'Since automatic loading failed, you can manually load the database file.\n\n';
+                    helpMessage += 'Click the "Load Database File" button that will appear below.';
+                    
+                    // Show file input for manual database loading
+                    this.showFileInput(dbPath);
+                }
+            } else if (error.message.includes('SQL.js')) {
+                helpMessage += 'SQL.js initialization issue. Try refreshing the page.';
+            }
+            
+            this.updateAgentResponse(helpMessage);
+            
+            // Clear the db on error so we don't have a partially loaded state
+            this.db = null;
+            this.currentDatabase = null;
+            
+            // Show current state in console
+            console.log('Current state after error:');
+            console.log('  this.db:', this.db);
+            console.log('  this.SQL:', this.SQL);
+            console.log('  this.currentDatabase:', this.currentDatabase);
+        }
+    }
+
+    async tryEmbeddedDatabase(dbPath) {
+        try {
+            console.log('Attempting to load embedded TPC-DS database...');
+            this.logSystem('Trying embedded TPC-DS database...', 'info');
+            
+            // Ensure SQL.js is loaded first
+            if (!this.SQL || !this.SQL.Database) {
+                console.log('SQL.js not ready, initializing...');
+                this.updateAgentResponse('Loading SQL.js for embedded database...');
+                await this.loadSqlJs();
+            }
+            
+            if (!this.SQL || !this.SQL.Database) {
+                throw new Error('SQL.js failed to initialize');
+            }
+            
+            if (typeof loadEmbeddedDatabaseDirectly === 'undefined') {
+                throw new Error('Embedded TPC-DS database not available');
+            }
+            
+            // Load embedded database
+            this.db = loadEmbeddedDatabaseDirectly();
+            
+            if (!this.db) {
+                throw new Error('Failed to load embedded database');
+            }
+            
+            this.currentDatabase = dbPath;
+            
+            // Verify the database is working
+            const testQuery = this.db.exec("SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'");
+            if (testQuery && testQuery.length > 0) {
+                const tableCount = testQuery[0].values[0][0];
+                console.log(`Embedded database loaded with ${tableCount} tables`);
+                this.logSystem(`Embedded TPC-DS database loaded with ${tableCount} tables`, 'info');
+            }
+            
+            // Display schema and set default query
+            this.displaySchema();
+            this.updateAgentResponse(`Embedded TPC-DS database loaded successfully! 📊\n\nNo web server required - database is embedded in the application.`);
+            this.setDefaultQuery(dbPath);
+            
+        } catch (error) {
+            console.error('Embedded database loading error:', error);
+            this.logSystem(`Embedded database loading error: ${error.message}`, 'error');
+            
+            // Fall back to file input
+            let helpMessage = `Embedded database loading failed: ${error.message}\n\n`;
+            helpMessage += 'You can manually load the database file.\n\n';
+            helpMessage += 'Click the "Load Database File" button that will appear below.';
+            
+            this.updateAgentResponse(helpMessage);
+            this.showFileInput(dbPath);
+            
+            // Clear the db on error
+            this.db = null;
+            this.currentDatabase = null;
+        }
+    }
+
+    showFileInput(dbPath) {
+        // Create file input for manual database loading
+        const agentDiv = document.getElementById('agentResponse');
+        
+        // Remove existing file input if present
+        const existingInput = document.getElementById('dbFileInput');
+        if (existingInput) {
+            existingInput.remove();
+        }
+        
+        // Create file input
+        const fileInputContainer = document.createElement('div');
+        fileInputContainer.id = 'dbFileInput';
+        fileInputContainer.style.marginTop = '15px';
+        fileInputContainer.style.padding = '10px';
+        fileInputContainer.style.border = '2px dashed #ccc';
+        fileInputContainer.style.borderRadius = '5px';
+        fileInputContainer.style.backgroundColor = '#f9f9f9';
+        
+        fileInputContainer.innerHTML = `
+            <div style="text-align: center;">
+                <h4>Load Database File Manually</h4>
+                <p>Select the database file from your computer:</p>
+                <input type="file" id="manualDbFile" accept=".db,.sqlite" style="margin: 10px;">
+                <button id="loadDbBtn" style="margin: 10px; padding: 8px 16px;">Load Database</button>
+                <p style="font-size: 12px; color: #666;">
+                    Expected file: <strong>${dbPath}</strong><br>
+                    Location: <code>/Users/tafeng/coquery/data/${dbPath}</code>
+                </p>
+            </div>
+        `;
+        
+        // Insert after agent response
+        agentDiv.parentNode.insertBefore(fileInputContainer, agentDiv.nextSibling);
+        
+        // Add event listener for file loading
+        document.getElementById('loadDbBtn').addEventListener('click', () => {
+            this.loadDatabaseFromFile(dbPath);
+        });
+    }
+
+    async loadDatabaseFromFile(expectedPath) {
+        const fileInput = document.getElementById('manualDbFile');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            this.updateAgentResponse('Please select a database file first.');
+            return;
+        }
+        
+        try {
+            this.updateAgentResponse(`Loading database from file: ${file.name}...`);
+            
+            // Read file as array buffer
+            const buffer = await file.arrayBuffer();
+            console.log(`File loaded: ${file.name}, size: ${buffer.byteLength} bytes`);
+            
+            if (!this.SQL || !this.SQL.Database) {
+                throw new Error('SQL.js not properly loaded');
+            }
+            
+            // Create database instance
+            const uint8Array = new Uint8Array(buffer);
+            this.db = new this.SQL.Database(uint8Array);
+            this.currentDatabase = expectedPath;
+            
+            // Verify the database is working
+            const testQuery = this.db.exec("SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'");
+            if (testQuery && testQuery.length > 0) {
+                const tableCount = testQuery[0].values[0][0];
+                console.log(`Database loaded with ${tableCount} tables`);
+                this.logSystem(`Database ${expectedPath} loaded from file with ${tableCount} tables`, 'info');
+            }
+            
+            // Display schema and set default query
+            this.displaySchema();
+            this.updateAgentResponse(`Database loaded successfully from file: ${file.name}! 📊`);
+            this.setDefaultQuery(expectedPath);
+            
+            // Hide file input after successful loading
+            const fileInputContainer = document.getElementById('dbFileInput');
+            if (fileInputContainer) {
+                fileInputContainer.style.display = 'none';
+            }
+            
+        } catch (error) {
+            console.error('File loading error:', error);
+            this.logSystem(`File loading error: ${error.message}`, 'error');
+            this.updateAgentResponse(`Error loading database file: ${error.message}`);
         }
     }
 
@@ -305,6 +588,67 @@ GROUP BY C.CustomerId, C.FirstName, C.LastName, C.Email
 HAVING COUNT(I.InvoiceId) > 1
 ORDER BY TotalSpent DESC
 LIMIT 10;`;
+        } else if (dbPath === 'tpcds.db') {
+            defaultQuery = `-- TPC-DS Sample Query: Cross-channel sales analysis
+-- Analyzes sales across store, web, and catalog channels
+
+WITH all_sales AS (
+    -- Store sales
+    SELECT 
+        'Store' as channel,
+        ss_sold_date_sk as sold_date_sk,
+        ss_item_sk as item_sk,
+        ss_customer_sk as customer_sk,
+        ss_quantity as quantity,
+        ss_sales_price as sales_price,
+        ss_ext_sales_price as ext_sales_price,
+        ss_net_profit as net_profit
+    FROM store_sales
+    
+    UNION ALL
+    
+    -- Web sales
+    SELECT 
+        'Web' as channel,
+        ws_sold_date_sk,
+        ws_item_sk,
+        ws_bill_customer_sk,
+        ws_quantity,
+        ws_sales_price,
+        ws_ext_sales_price,
+        ws_net_profit
+    FROM web_sales
+    
+    UNION ALL
+    
+    -- Catalog sales
+    SELECT 
+        'Catalog' as channel,
+        cs_sold_date_sk,
+        cs_item_sk,
+        cs_bill_customer_sk,
+        cs_quantity,
+        cs_sales_price,
+        cs_ext_sales_price,
+        cs_net_profit
+    FROM catalog_sales
+)
+SELECT 
+    channel,
+    i.i_item_id,
+    i.i_item_desc,
+    i.i_category,
+    COUNT(DISTINCT customer_sk) as unique_customers,
+    SUM(quantity) as total_quantity,
+    SUM(ext_sales_price) as total_revenue,
+    SUM(net_profit) as total_profit,
+    AVG(sales_price) as avg_sales_price
+FROM all_sales a
+JOIN item i ON a.item_sk = i.i_item_sk
+JOIN date_dim d ON a.sold_date_sk = d.d_date_sk
+WHERE d.d_year = 2001
+GROUP BY channel, i.i_item_id, i.i_item_desc, i.i_category
+ORDER BY channel, total_revenue DESC;`;
         } else if (dbPath === 'AdventureWorks-sqlite.db') {
             defaultQuery = `/*
   This query answers the question:
@@ -418,7 +762,9 @@ ORDER BY
         }
 
         if (!this.db) {
-            this.updateAgentResponse('Please select a database first.');
+            console.error('Database is null. Current database:', this.currentDatabase);
+            this.logSystem('Database not loaded. Please select a database from the dropdown.', 'error');
+            this.updateAgentResponse('Database not loaded. Please select a database from the dropdown or check the System Log for errors.');
             return;
         }
 
@@ -860,7 +1206,7 @@ ORDER BY
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    new CoQuery();
+    window.coquery = new CoQuery();
 });
 
 // Export for potential external use

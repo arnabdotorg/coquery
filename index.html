@@ -132,6 +132,7 @@
                                         <select id="dbSelect" class="form-select form-select-sm" style="width: auto;">
                                             <option value="Chinook_Sqlite.sqlite">Chinook</option>
                                             <option value="AdventureWorks-sqlite.db">AdventureWorks</option>
+                                            <option value="tpcds.db">TPC-DS</option>
                                         </select>
                                         <button class="btn btn-sm btn-light" type="button" id="toggleSchema">
                                             <i class="ti ti-chevron-up"></i>
@@ -301,13 +302,25 @@
     </div>
 
     <!-- Scripts -->
-    <script src="./sql-wasm.js"></script>
+    <!-- Try CDN version first, then local fallback -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js" onerror="loadLocalSqlJs()"></script>
+    <script>
+        function loadLocalSqlJs() {
+            // Fallback to local version if CDN fails
+            const script = document.createElement('script');
+            script.src = './sql-wasm.js';
+            document.head.appendChild(script);
+        }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/closebrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/selection/active-line.min.js"></script>
+    
+    <!-- Embedded TPC-DS Database -->
+    <script src="./tpcds_embedded.js"></script>
     
     <script src="./script.js"></script>
 </body>
