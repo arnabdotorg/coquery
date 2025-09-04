@@ -174,7 +174,11 @@
                             </button>
                             <button id="explainBtn" class="btn btn-secondary">
                                 <i class="ti ti-info-circle"></i>
-                                Explain
+                                Explain Query
+                            </button>
+                            <button id="explainResultsBtn" class="btn btn-secondary" style="display: none;">
+                                <i class="ti ti-lightbulb"></i>
+                                Explain Results
                             </button>
                             <button id="clearBtn" class="btn btn-light">
                                 <i class="ti ti-trash"></i>
@@ -234,15 +238,23 @@
                             <div class="card-header">
                                 <h3 class="card-title">
                                     <i class="ti ti-wand"></i>
-                                    Ask LLM to Write/Edit SQL
+                                    Natural Language to SQL
                                 </h3>
                             </div>
                             <div class="card-body">
-                                <textarea id="sqlPrompt" class="form-control" rows="3" placeholder="Describe the SQL you need or how to modify the current query..."></textarea>
+                                <textarea id="sqlPrompt" class="form-control" rows="4" placeholder="Examples:
+• Create a new query: 'Show top 10 customers by revenue'
+• Modify existing: 'Add ORDER BY total sales DESC'
+• Complex requests: 'Find customers who bought products in multiple categories'
+
+Your request:"></textarea>
                                 <button id="generateSqlBtn" class="btn btn-primary w-100 mt-2" type="button">
                                     <i class="ti ti-wand"></i>
-                                    Generate SQL
+                                    <span id="generateBtnText">Generate SQL</span>
                                 </button>
+                                <div class="form-text mt-2">
+                                    💡 <strong>Tip:</strong> For modifications, the AI will use your current query as context. For new queries, it will use the database schema.
+                                </div>
                             </div>
                         </div>
 
@@ -319,8 +331,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/closebrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/selection/active-line.min.js"></script>
     
-    <!-- Embedded TPC-DS Database -->
+    <!-- Embedded Databases -->
     <script src="./tpcds_embedded.js"></script>
+    <script src="./chinook_embedded.js"></script>
     
     <script src="./script.js"></script>
 </body>

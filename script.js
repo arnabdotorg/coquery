@@ -8,6 +8,8 @@ class CoQuery {
         this.model = 'gemini-2.5-flash';
         this.queryHistory = [];
         this.historyIndex = -1;
+        this.lastQueryResults = null;
+        this.lastExecutedQuery = null;
         
         this.init();
     }
@@ -61,21 +63,8 @@ class CoQuery {
             await this.loadSqlJs();
             console.log('SQL.js loaded, attempting to load database...');
             
-            // Try to load database with retry
-            let retries = 3;
-            while (retries > 0) {
-                try {
-                    await this.loadDatabase('Chinook_Sqlite.sqlite');
-                    break;
-                } catch (error) {
-                    retries--;
-                    console.log(`Database load attempt failed, retries left: ${retries}`);
-                    if (retries === 0) {
-                        throw error;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
+            // Load default database (Chinook)
+            await this.loadDatabase('Chinook_Sqlite.sqlite');
             
             // Load saved API key if available
             const hasSavedKey = this.loadApiKey();
@@ -148,6 +137,7 @@ class CoQuery {
         // Action buttons
         document.getElementById('executeBtn').addEventListener('click', () => this.executeQuery());
         document.getElementById('explainBtn').addEventListener('click', () => this.explainQuery());
+        document.getElementById('explainResultsBtn').addEventListener('click', () => this.explainResults());
 
         document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
         document.getElementById('clearErrorsBtn').addEventListener('click', () => this.clearSystemLog());
@@ -254,6 +244,61 @@ LIMIT 10;`,
         }
     }
 
+    async loadEmbeddedChinook(dbPath) {
+        try {
+            console.log('Loading Chinook via embedded database...');
+            this.updateAgentResponse('Loading Chinook database (embedded)...');
+            
+            // Ensure SQL.js is loaded
+            if (!this.SQL || !this.SQL.Database) {
+                console.log('Initializing SQL.js...');
+                await this.loadSqlJs();
+            }
+            
+            if (!this.SQL || !this.SQL.Database) {
+                throw new Error('SQL.js failed to initialize');
+            }
+            
+            if (typeof loadEmbeddedChinookDirect === 'undefined') {
+                throw new Error('Embedded Chinook database not available');
+            }
+            
+            // Load embedded database with SQL.js reference
+            console.log('Loading embedded Chinook database...');
+            // Pass SQL.js reference to the loader
+            window.SQL = this.SQL;
+            this.db = loadEmbeddedChinookDirect();
+            
+            if (!this.db) {
+                throw new Error('Failed to create Chinook database from embedded data');
+            }
+            
+            this.currentDatabase = dbPath;
+            
+            // Verify the database
+            const testQuery = this.db.exec("SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'");
+            if (testQuery && testQuery.length > 0) {
+                const tableCount = testQuery[0].values[0][0];
+                console.log(`Embedded Chinook loaded with ${tableCount} tables`);
+                this.logSystem(`Embedded Chinook database loaded with ${tableCount} tables`, 'info');
+            }
+            
+            // Display schema and set default query
+            this.displaySchema();
+            this.updateAgentResponse(`✅ Chinook database loaded successfully!\n\nUsing embedded database - no server required! 🎵`);
+            this.setDefaultQuery(dbPath);
+            
+        } catch (error) {
+            console.error('Chinook embedded loading failed:', error);
+            this.logSystem(`Chinook embedded loading failed: ${error.message}`, 'error');
+            
+            // Fall back to file input
+            if (window.location.protocol === 'file:') {
+                this.showDatabaseFileInput(dbPath);
+            }
+        }
+    }
+
     async loadEmbeddedDatabaseDirectly(dbPath) {
         try {
             console.log('Loading TPC-DS via embedded database...');
@@ -273,8 +318,10 @@ LIMIT 10;`,
                 throw new Error('Embedded database not available');
             }
             
-            // Load embedded database
+            // Load embedded database with SQL.js reference
             console.log('Loading embedded TPC-DS database...');
+            // Pass SQL.js reference to the loader
+            window.SQL = this.SQL;
             this.db = loadEmbeddedDatabaseDirectly();
             
             if (!this.db) {
@@ -310,6 +357,26 @@ LIMIT 10;`,
         try {
             console.log(`Attempting to load database: ${dbPath}`);
             this.updateAgentResponse(`Loading database: ${dbPath}...`);
+            
+            // Try embedded databases first
+            if (dbPath === 'Chinook_Sqlite.sqlite' && typeof loadEmbeddedChinookDirect !== 'undefined') {
+                console.log('Loading embedded Chinook database...');
+                this.loadEmbeddedChinook(dbPath);
+                return;
+            }
+            
+            if (dbPath === 'tpcds.db' && typeof loadEmbeddedTpcds !== 'undefined') {
+                console.log('Loading embedded TPC-DS database...');
+                this.loadEmbeddedDatabaseDirectly(dbPath);
+                return;
+            }
+            
+            // Check if we're running from file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.log('File protocol detected - showing file input for manual loading');
+                this.showDatabaseFileInput(dbPath);
+                return;
+            }
             
             // Try different paths in case of server configuration issues
             let response;
@@ -465,8 +532,8 @@ LIMIT 10;`,
         }
     }
 
-    showFileInput(dbPath) {
-        // Create file input for manual database loading
+    showDatabaseFileInput(dbPath) {
+        // Create file input for manual database loading (for file:// protocol)
         const agentDiv = document.getElementById('agentResponse');
         
         // Remove existing file input if present
@@ -475,24 +542,28 @@ LIMIT 10;`,
             existingInput.remove();
         }
         
+        // Update agent response
+        this.updateAgentResponse(`Running without a server - please load the database file manually.\n\nSelect the ${dbPath} file from your data folder below:`);
+        
         // Create file input
         const fileInputContainer = document.createElement('div');
         fileInputContainer.id = 'dbFileInput';
         fileInputContainer.style.marginTop = '15px';
-        fileInputContainer.style.padding = '10px';
-        fileInputContainer.style.border = '2px dashed #ccc';
-        fileInputContainer.style.borderRadius = '5px';
-        fileInputContainer.style.backgroundColor = '#f9f9f9';
+        fileInputContainer.style.padding = '15px';
+        fileInputContainer.style.border = '2px dashed #206bc4';
+        fileInputContainer.style.borderRadius = '8px';
+        fileInputContainer.style.backgroundColor = '#f1f5f9';
         
         fileInputContainer.innerHTML = `
             <div style="text-align: center;">
-                <h4>Load Database File Manually</h4>
-                <p>Select the database file from your computer:</p>
-                <input type="file" id="manualDbFile" accept=".db,.sqlite" style="margin: 10px;">
-                <button id="loadDbBtn" style="margin: 10px; padding: 8px 16px;">Load Database</button>
-                <p style="font-size: 12px; color: #666;">
-                    Expected file: <strong>${dbPath}</strong><br>
-                    Location: <code>/Users/tafeng/coquery/data/${dbPath}</code>
+                <h4 style="color: #206bc4; margin-bottom: 10px;">📁 Load Database File</h4>
+                <p style="margin-bottom: 15px;">Select <strong>${dbPath}</strong> from your computer:</p>
+                <input type="file" id="manualDbFile" accept=".db,.sqlite" style="margin: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="loadDbBtn" class="btn btn-primary" style="margin: 10px;">
+                    <i class="ti ti-database"></i> Load Database
+                </button>
+                <p style="font-size: 13px; color: #666; margin-top: 10px;">
+                    📍 File location: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">/Users/tafeng/coquery/data/${dbPath}</code>
                 </p>
             </div>
         `;
@@ -504,6 +575,18 @@ LIMIT 10;`,
         document.getElementById('loadDbBtn').addEventListener('click', () => {
             this.loadDatabaseFromFile(dbPath);
         });
+        
+        // Also add file input change listener for immediate loading
+        document.getElementById('manualDbFile').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                document.getElementById('loadDbBtn').click();
+            }
+        });
+    }
+
+    showFileInput(dbPath) {
+        // Legacy method - redirect to new one
+        this.showDatabaseFileInput(dbPath);
     }
 
     async loadDatabaseFromFile(expectedPath) {
@@ -707,6 +790,37 @@ ORDER BY
         }
     }
 
+    getSchemaContext() {
+        if (!this.db) return "No database loaded";
+        
+        try {
+            const tables = this.db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+            if (tables.length === 0) {
+                return "No tables found in database";
+            }
+            
+            let schemaText = "";
+            tables.forEach(({ columns, values }) => {
+                values.forEach(row => {
+                    const tableName = row[0];
+                    const columnsInfo = this.db.exec(`PRAGMA table_info('${tableName}')`);
+                    
+                    if (columnsInfo[0]) {
+                        const columns = columnsInfo[0].values.map(col => 
+                            `${col[1]} (${col[2]})`
+                        ).join(', ');
+                        schemaText += `Table: ${tableName}\nColumns: ${columns}\n\n`;
+                    }
+                });
+            });
+            
+            return schemaText.trim();
+        } catch (error) {
+            console.error('Schema context error:', error);
+            return "Error retrieving schema information";
+        }
+    }
+
     displaySchema() {
         if (!this.db) return;
 
@@ -776,9 +890,21 @@ ORDER BY
             const results = this.db.exec(sql);
             const endTime = performance.now();
             
+            // Store results for explanation
+            this.lastQueryResults = results;
+            this.lastExecutedQuery = sql;
+            
             this.displayResults(results, endTime - startTime);
             this.logSystem(`Query executed successfully in ${(endTime - startTime).toFixed(2)}ms`, 'info');
             this.updateAgentResponse(`Query executed successfully in ${(endTime - startTime).toFixed(2)}ms! ✅`);
+            
+            // Show explain results button if we have results
+            const explainResultsBtn = document.getElementById('explainResultsBtn');
+            if (results && results.length > 0 && results[0].values && results[0].values.length > 0) {
+                explainResultsBtn.style.display = 'inline-block';
+            } else {
+                explainResultsBtn.style.display = 'none';
+            }
         } catch (error) {
             console.error('Query execution error:', error);
             this.logSystem(`Query execution error: ${error.message}`, 'error');
@@ -849,6 +975,87 @@ ORDER BY
 
     async explainQuery() {
         await this.callAI('explain', 'Explain this SQL query in 1-3 sentences, breaking down what each part does and how it works:');
+    }
+
+    formatResultsForAI(results) {
+        if (!results || results.length === 0) {
+            return "No results returned";
+        }
+
+        let formatted = "";
+        results.forEach((result, index) => {
+            const { columns, values } = result;
+            
+            if (values.length === 0) {
+                formatted += "No rows returned\n";
+                return;
+            }
+
+            // Show column headers
+            formatted += `Result Set ${index + 1}:\n`;
+            formatted += `Columns: ${columns.join(', ')}\n`;
+            formatted += `Total Rows: ${values.length}\n\n`;
+            
+            // Show first few rows for analysis (limit to 10 rows to avoid token limits)
+            const rowsToShow = Math.min(10, values.length);
+            for (let i = 0; i < rowsToShow; i++) {
+                const row = values[i];
+                const rowData = columns.map((col, idx) => `${col}: ${row[idx] !== null ? row[idx] : 'NULL'}`).join(', ');
+                formatted += `Row ${i + 1}: ${rowData}\n`;
+            }
+            
+            if (values.length > 10) {
+                formatted += `... (${values.length - 10} more rows)\n`;
+            }
+            
+            formatted += "\n";
+        });
+
+        return formatted;
+    }
+
+    async explainResults() {
+        if (!this.lastQueryResults || !this.lastExecutedQuery) {
+            this.updateAgentResponse('No query results to explain. Execute a query first.');
+            return;
+        }
+
+        const apiKey = document.getElementById('apiKey').value.trim();
+        if (!apiKey) {
+            this.updateAgentResponse('Please enter your API key to use AI features.\n\nGo to https://aistudio.google.com/ to create a key.');
+            return;
+        }
+
+        try {
+            this.updateAgentResponse('🤖 Gemini is analyzing your query results...');
+            
+            // Format results for AI analysis
+            const formattedResults = this.formatResultsForAI(this.lastQueryResults);
+            
+            const prompt = `Analyze these SQL query results and provide insights. Explain what the data shows, identify any patterns, trends, or notable findings, and provide business context if possible.
+
+SQL Query:
+${this.lastExecutedQuery}
+
+Query Results:
+${formattedResults}
+
+Current Database: ${this.currentDatabase}
+
+Provide a clear explanation of what these results mean in business terms.`;
+            
+            const response = await this.callGeminiAPI(apiKey, prompt, '');
+            
+            if (!response || typeof response !== 'string') {
+                throw new Error(`Invalid response from Gemini API: ${typeof response}`);
+            }
+            
+            this.updateAgentResponse(response);
+        } catch (error) {
+            console.error('Results explanation error:', error);
+            this.logSystem(`Results explanation error: ${error.message}`, 'error');
+            this.updateAgentResponse(`Results explanation failed: ${error.message}`);
+        }
     }
 
     async callAI(action, prompt) {
@@ -966,12 +1173,49 @@ ORDER BY
     async callGeminiForSQL(apiKey, userPrompt, existingSql) {
         try {
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+            
+            // Get current database schema for context
+            const schemaContext = this.getSchemaContext();
+            
+            // Determine if this is creation or modification
+            const isModification = existingSql && existingSql.trim().length > 0;
+            
+            let prompt;
+            if (isModification) {
+                prompt = `You are an expert SQL developer. Given the database schema and existing SQL query, modify the query according to the user's instruction. Return only the modified SQL query.
+
+Database Schema:
+${schemaContext}
+
+Current Database: ${this.currentDatabase}
+
+User Instruction:
+${userPrompt}
+
+Existing SQL Query:
+${existingSql}
+
+Return only the modified SQL query without any explanation or code block formatting.`;
+            } else {
+                prompt = `You are an expert SQL developer. Given the database schema, create a new SQL query based on the user's natural language request. Return only the SQL query.
+
+Database Schema:
+${schemaContext}
+
+Current Database: ${this.currentDatabase}
+
+User Request:
+${userPrompt}
+
+Return only the SQL query without any explanation or code block formatting.`;
+            }
+            
             const body = {
                 contents: [
                     {
                         parts: [
                             {
-                                text: `You are an expert SQL developer. Given the existing SQL query and the user's instruction, return the revised SQL query only.\n\nUser Instruction:\n${userPrompt}\n\nExisting SQL Query:\n${existingSql}`
+                                text: prompt
                             }
                         ]
                     }
@@ -999,11 +1243,18 @@ ORDER BY
             }
 
             const data = await response.json();
-            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
             // Extract SQL from code block if present
-            const match = text.match(/```sql\n([\s\S]*?)```/i);
-            return match ? match[1].trim() : text.trim();
+            const sqlMatch = text.match(/```sql\n([\s\S]*?)```/i) || text.match(/```\n([\s\S]*?)```/i);
+            if (sqlMatch) {
+                text = sqlMatch[1].trim();
+            }
+            
+            // Clean up any remaining formatting
+            text = text.replace(/^```sql\n?/i, '').replace(/\n?```$/i, '').trim();
+            
+            return text;
         } catch (error) {
             console.error('Gemini SQL generation error:', error);
             this.logSystem(`Gemini SQL generation error: ${error.message}`, 'error');
@@ -1013,31 +1264,56 @@ ORDER BY
 
     async generateSQLFromPrompt() {
         const userPrompt = document.getElementById('sqlPrompt').value.trim();
-        const existingSql = this.editor.getValue();
+        const existingSql = this.editor.getValue().trim();
         if (!userPrompt) {
-            this.updateAgentResponse('Please enter a prompt to generate SQL.');
+            this.updateAgentResponse('Please enter a natural language request to generate SQL.');
             return;
         }
 
         const apiKey = document.getElementById('apiKey').value.trim();
         if (!apiKey) {
-            this.updateAgentResponse('Please enter your API key to use AI features.');
+            this.updateAgentResponse('Please enter your API key to use AI features.\n\nGo to https://aistudio.google.com/ to create a key.');
             return;
         }
 
+        const generateBtn = document.getElementById('generateSqlBtn');
+        const btnText = document.getElementById('generateBtnText');
+        const originalText = btnText.textContent;
+
         try {
-            this.updateAgentResponse('🤖 Generating SQL...');
+            // Update button state
+            generateBtn.disabled = true;
+            btnText.textContent = existingSql ? 'Modifying...' : 'Generating...';
+            
+            const actionType = existingSql ? 'Modifying existing SQL query' : 'Generating new SQL query';
+            this.updateAgentResponse(`🤖 ${actionType}...`);
+            
             const newSql = await this.callGeminiForSQL(apiKey, userPrompt, existingSql);
-            if (newSql) {
+            
+            if (newSql && newSql.trim()) {
                 this.editor.setValue(newSql);
                 this.flashEditor();
                 this.addToHistory(newSql);
-                this.updateAgentResponse('SQL inserted into editor.');
+                
+                const successMessage = existingSql 
+                    ? '✅ SQL query modified successfully! The updated query is now in the editor.'
+                    : '✅ SQL query generated successfully! The new query is now in the editor.';
+                    
+                this.updateAgentResponse(successMessage);
+                this.logSystem(`SQL ${existingSql ? 'modified' : 'generated'} successfully`, 'info');
+                
+                // Clear the prompt after successful generation
+                document.getElementById('sqlPrompt').value = '';
             } else {
-                this.updateAgentResponse('No SQL generated.');
+                this.updateAgentResponse('❌ No SQL was generated. Please try rephrasing your request or check if your API key is valid.');
             }
         } catch (error) {
-            this.updateAgentResponse(`SQL generation failed: ${error.message}`);
+            this.logSystem(`SQL generation error: ${error.message}`, 'error');
+            this.updateAgentResponse(`❌ SQL generation failed: ${error.message}\n\nPlease check your API key and try again.`);
+        } finally {
+            // Reset button state
+            generateBtn.disabled = false;
+            btnText.textContent = originalText;
         }
     }
 
@@ -1200,6 +1476,9 @@ ORDER BY
         this.editor.setValue('');
         document.getElementById('results').innerHTML = '<p class="text-muted">Execute a query to see results...</p>';
         document.getElementById('decomposedParts').style.display = 'none';
+        document.getElementById('explainResultsBtn').style.display = 'none';
+        this.lastQueryResults = null;
+        this.lastExecutedQuery = null;
         this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and NL2SQL features.');
     }
 }
