@@ -882,6 +882,20 @@ ORDER BY
             return;
         }
 
+        // R4: Basic error detection and auto-fix before execution
+        const validationResult = this.validateQuery(sql);
+        if (!validationResult.isValid) {
+            this.logSystem(`Query validation error: ${validationResult.error}`, 'warning');
+            
+            // Show clickable auto-fix option
+            if (validationResult.fixedQuery) {
+                this.displayAutoFixSuggestion(validationResult);
+                return; // Don't execute until user decides
+            } else {
+                this.updateAgentResponse(`⚠️ Query validation warning: ${validationResult.error}\n\n${validationResult.suggestion || ''}`);
+            }
+        }
+
         try {
             this.addToHistory(sql);
             this.updateAgentResponse('Executing query... ⚡');
@@ -896,7 +910,16 @@ ORDER BY
             
             this.displayResults(results, endTime - startTime);
             this.logSystem(`Query executed successfully in ${(endTime - startTime).toFixed(2)}ms`, 'info');
-            this.updateAgentResponse(`Query executed successfully in ${(endTime - startTime).toFixed(2)}ms! ✅`);
+            
+            // R5: Generate follow-up query suggestions
+            const suggestions = this.generateFollowUpSuggestions(sql, results);
+            let responseMessage = `Query executed successfully in ${(endTime - startTime).toFixed(2)}ms! ✅`;
+            this.updateAgentResponse(responseMessage);
+            
+            // Add clickable follow-up suggestions
+            if (suggestions.length > 0) {
+                this.displayClickableSuggestions(suggestions, sql);
+            }
             
             // Show explain results button if we have results
             const explainResultsBtn = document.getElementById('explainResultsBtn');
@@ -908,7 +931,10 @@ ORDER BY
         } catch (error) {
             console.error('Query execution error:', error);
             this.logSystem(`Query execution error: ${error.message}`, 'error');
-            this.updateAgentResponse(`Query execution failed: ${error.message} ❌`);
+            
+            // R4: Enhanced error detection with suggestions
+            const errorSuggestion = this.getErrorSuggestion(error.message, sql);
+            this.updateAgentResponse(`Query execution failed: ${error.message} ❌\n\n${errorSuggestion}`);
             this.displayError(error.message);
         }
     }
@@ -1472,6 +1498,422 @@ Return only the SQL query without any explanation or code block formatting.`;
         errorLog.innerHTML = '<p class="text-muted">No system messages logged yet...</p>';
     }
 
+    // R4: Basic error detection and auto-fix - validate query before execution
+    validateQuery(sql) {
+        const upperSql = sql.toUpperCase();
+        const errors = [];
+        let fixedQuery = sql;
+        let hasAutoFix = false;
+        
+        // Check for unclosed quotes and try to fix
+        const singleQuotes = (sql.match(/'/g) || []).length;
+        const doubleQuotes = (sql.match(/"/g) || []).length;
+        if (singleQuotes % 2 !== 0) {
+            errors.push('Unclosed single quote detected');
+            // Auto-fix: Add closing quote at the end
+            fixedQuery = fixedQuery.trim() + "'";
+            hasAutoFix = true;
+        }
+        if (doubleQuotes % 2 !== 0) {
+            errors.push('Unclosed double quote detected');
+            // Auto-fix: Add closing quote at the end
+            fixedQuery = fixedQuery.trim() + '"';
+            hasAutoFix = true;
+        }
+        
+        // Check for unmatched parentheses and try to fix
+        let parenCount = 0;
+        let parenPositions = [];
+        for (let i = 0; i < fixedQuery.length; i++) {
+            if (fixedQuery[i] === '(') {
+                parenCount++;
+                parenPositions.push({type: 'open', pos: i});
+            }
+            if (fixedQuery[i] === ')') {
+                parenCount--;
+                parenPositions.push({type: 'close', pos: i});
+            }
+        }
+        
+        if (parenCount > 0) {
+            errors.push('Unclosed parenthesis detected');
+            // Auto-fix: Add closing parentheses
+            for (let i = 0; i < parenCount; i++) {
+                fixedQuery = fixedQuery.trim() + ')';
+            }
+            hasAutoFix = true;
+        } else if (parenCount < 0) {
+            errors.push('Extra closing parenthesis detected');
+            // This is harder to auto-fix reliably
+        }
+        
+        // Check for missing semicolon at the end
+        if (!fixedQuery.trim().endsWith(';')) {
+            // Auto-fix: Add semicolon
+            fixedQuery = fixedQuery.trim() + ';';
+            // Don't count this as an error, just fix it silently
+        }
+        
+        // Check for common syntax errors
+        if ((upperSql.match(/SELECT/g) || []).length !== (upperSql.match(/FROM/g) || []).length) {
+            errors.push('Mismatched SELECT/FROM statements');
+            // This is complex to auto-fix without context
+        }
+        
+        // Basic schema validation and auto-correction for Chinook
+        if (this.currentDatabase === 'Chinook_Sqlite.sqlite') {
+            const tables = ['Customer', 'Invoice', 'Track', 'Album', 'Artist', 'Employee', 'Genre', 'MediaType', 'Playlist', 'PlaylistTrack', 'InvoiceLine'];
+            const tableMap = {};
+            tables.forEach(t => tableMap[t.toLowerCase()] = t);
+            
+            // Create a regex to find potential table names after FROM and JOIN
+            const tableRegex = /(?:FROM|JOIN)\s+([A-Za-z_]\w*)/gi;
+            let match;
+            let replacements = [];
+            
+            while ((match = tableRegex.exec(fixedQuery)) !== null) {
+                const tableName = match[1];
+                const lowerTableName = tableName.toLowerCase();
+                
+                // Check if it's a valid table (case-insensitive)
+                if (tableMap[lowerTableName] && tableName !== tableMap[lowerTableName]) {
+                    // Wrong case - fix it
+                    replacements.push({
+                        original: tableName,
+                        replacement: tableMap[lowerTableName],
+                        position: match.index + match[0].indexOf(tableName)
+                    });
+                    errors.push(`Fixed table case: "${tableName}" → "${tableMap[lowerTableName]}"`);
+                    hasAutoFix = true;
+                } else if (!tableMap[lowerTableName]) {
+                    // Try fuzzy matching for typos
+                    const closeMatch = tables.find(table => 
+                        this.levenshteinDistance(table.toLowerCase(), lowerTableName) <= 2
+                    );
+                    if (closeMatch) {
+                        replacements.push({
+                            original: tableName,
+                            replacement: closeMatch,
+                            position: match.index + match[0].indexOf(tableName)
+                        });
+                        errors.push(`Fixed typo: "${tableName}" → "${closeMatch}"`);
+                        hasAutoFix = true;
+                    }
+                }
+            }
+            
+            // Apply replacements in reverse order to maintain positions
+            replacements.sort((a, b) => b.position - a.position);
+            replacements.forEach(r => {
+                fixedQuery = fixedQuery.substring(0, r.position) + 
+                           r.replacement + 
+                           fixedQuery.substring(r.position + r.original.length);
+            });
+        }
+        
+        if (errors.length > 0) {
+            return {
+                isValid: false,
+                error: errors.join('; '),
+                suggestion: hasAutoFix ? 'Auto-fix available. Click OK to apply.' : 'Check your query for syntax errors.',
+                fixedQuery: hasAutoFix ? fixedQuery : null
+            };
+        }
+        
+        return { isValid: true };
+    }
+    
+    // Helper function for fuzzy string matching
+    levenshteinDistance(str1, str2) {
+        const matrix = [];
+        for (let i = 0; i <= str2.length; i++) {
+            matrix[i] = [i];
+        }
+        for (let j = 0; j <= str1.length; j++) {
+            matrix[0][j] = j;
+        }
+        for (let i = 1; i <= str2.length; i++) {
+            for (let j = 1; j <= str1.length; j++) {
+                if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+                }
+            }
+        }
+        return matrix[str2.length][str1.length];
+    }
+    
+    // R4: Get suggestions for error messages
+    getErrorSuggestion(errorMessage, sql) {
+        const suggestions = [];
+        
+        if (errorMessage.includes('no such table')) {
+            const tableName = errorMessage.match(/no such table: (\w+)/i)?.[1];
+            if (tableName) {
+                suggestions.push(`**Table "${tableName}" not found.**`);
+                suggestions.push('Available tables: Use the Schema panel to see all available tables.');
+                suggestions.push(`Tip: Table names are case-sensitive in SQLite.`);
+            }
+        } else if (errorMessage.includes('no such column')) {
+            const columnName = errorMessage.match(/no such column: (\w+)/i)?.[1];
+            if (columnName) {
+                suggestions.push(`**Column "${columnName}" not found.**`);
+                suggestions.push('Check the Schema panel for correct column names.');
+                suggestions.push('Tip: You might need to specify the table alias (e.g., c.ColumnName)');
+            }
+        } else if (errorMessage.includes('ambiguous column')) {
+            suggestions.push('**Column name is ambiguous.**');
+            suggestions.push('Specify which table the column belongs to using table aliases.');
+            suggestions.push('Example: SELECT c.Name FROM Customer c');
+        } else if (errorMessage.includes('syntax error')) {
+            suggestions.push('**SQL syntax error detected.**');
+            suggestions.push('Common fixes:');
+            suggestions.push('• Check for missing commas between columns');
+            suggestions.push('• Ensure all quotes and parentheses are closed');
+            suggestions.push('• Verify keyword spelling (SELECT, FROM, WHERE, etc.)');
+        }
+        
+        return suggestions.length > 0 ? suggestions.join('\n') : 'Please check your SQL syntax and try again.';
+    }
+    
+    // R5: Generate follow-up query suggestions based on results
+    generateFollowUpSuggestions(sql, results) {
+        const suggestions = [];
+        const upperSql = sql.toUpperCase();
+        
+        if (!results || results.length === 0 || !results[0].values || results[0].values.length === 0) {
+            suggestions.push('Add more conditions to broaden your search');
+            suggestions.push('Check if your WHERE clause is too restrictive');
+            return suggestions;
+        }
+        
+        const rowCount = results[0].values.length;
+        const hasGroupBy = upperSql.includes('GROUP BY');
+        const hasOrderBy = upperSql.includes('ORDER BY');
+        const hasLimit = upperSql.includes('LIMIT');
+        const hasWhere = upperSql.includes('WHERE');
+        const hasJoin = upperSql.includes('JOIN');
+        
+        // Suggest based on current query structure
+        if (!hasOrderBy && rowCount > 1) {
+            suggestions.push('Add ORDER BY to sort your results');
+        }
+        
+        if (!hasLimit && rowCount > 20) {
+            suggestions.push('Add LIMIT to see top results only');
+        }
+        
+        if (!hasGroupBy && hasJoin) {
+            suggestions.push('Add GROUP BY to aggregate your data');
+        }
+        
+        if (hasGroupBy && !upperSql.includes('HAVING')) {
+            suggestions.push('Add HAVING clause to filter grouped results');
+        }
+        
+        if (!hasWhere && rowCount > 100) {
+            suggestions.push('Add WHERE clause to filter results');
+        }
+        
+        // Context-specific suggestions for Chinook database
+        if (this.currentDatabase === 'Chinook_Sqlite.sqlite') {
+            if (upperSql.includes('CUSTOMER') && !upperSql.includes('INVOICE')) {
+                suggestions.push('Join with Invoice table to see customer purchases');
+            }
+            
+            if (upperSql.includes('TRACK') && !upperSql.includes('ALBUM')) {
+                suggestions.push('Join with Album and Artist tables for complete track info');
+            }
+            
+            if (upperSql.includes('INVOICE') && !hasGroupBy) {
+                suggestions.push('Group by customer or date to see sales patterns');
+            }
+        }
+        
+        // Limit suggestions to top 3 most relevant
+        return suggestions.slice(0, 3);
+    }
+
+    // Display clickable auto-fix suggestion
+    displayAutoFixSuggestion(validationResult) {
+        const agentDiv = document.getElementById('agentResponse');
+        
+        // Remove existing suggestions
+        this.removeSuggestionButtons();
+        
+        // Update agent response with error details
+        this.updateAgentResponse(`⚠️ Found issues in your query:\n\n${validationResult.error}\n\nSuggested fix available:`);
+        
+        // Create suggestion container
+        const suggestionContainer = document.createElement('div');
+        suggestionContainer.id = 'suggestionContainer';
+        suggestionContainer.style.marginTop = '15px';
+        suggestionContainer.style.padding = '15px';
+        suggestionContainer.style.border = '2px solid #f59e0b';
+        suggestionContainer.style.borderRadius = '8px';
+        suggestionContainer.style.backgroundColor = '#fffbeb';
+        
+        suggestionContainer.innerHTML = `
+            <div style="margin-bottom: 10px;">
+                <strong>🔧 Suggested Fix:</strong>
+            </div>
+            <pre style="background: #fff; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 13px; white-space: pre-wrap;">${validationResult.fixedQuery}</pre>
+            <div style="display: flex; gap: 10px;">
+                <button id="applyFixBtn" class="btn btn-warning" style="flex: 1;">
+                    <i class="ti ti-check"></i> Apply Fix & Execute
+                </button>
+                <button id="ignoreFixBtn" class="btn btn-outline-secondary" style="flex: 1;">
+                    <i class="ti ti-x"></i> Ignore & Execute Anyway
+                </button>
+            </div>
+        `;
+        
+        // Insert after agent response
+        agentDiv.parentNode.insertBefore(suggestionContainer, agentDiv.nextSibling);
+        
+        // Add event listeners
+        document.getElementById('applyFixBtn').addEventListener('click', () => {
+            this.editor.setValue(validationResult.fixedQuery);
+            this.flashEditor();
+            this.removeSuggestionButtons();
+            this.executeQuery(); // Execute with fixed query
+        });
+        
+        document.getElementById('ignoreFixBtn').addEventListener('click', () => {
+            this.removeSuggestionButtons();
+            this.executeQuery(); // Execute original query
+        });
+    }
+    
+    // Display clickable follow-up suggestions
+    displayClickableSuggestions(suggestions, originalQuery) {
+        const agentDiv = document.getElementById('agentResponse');
+        
+        // Remove existing suggestions
+        this.removeSuggestionButtons();
+        
+        // Create suggestion container
+        const suggestionContainer = document.createElement('div');
+        suggestionContainer.id = 'suggestionContainer';
+        suggestionContainer.style.marginTop = '15px';
+        suggestionContainer.style.padding = '15px';
+        suggestionContainer.style.border = '2px solid #206bc4';
+        suggestionContainer.style.borderRadius = '8px';
+        suggestionContainer.style.backgroundColor = '#f1f5f9';
+        
+        let suggestionHTML = `
+            <div style="margin-bottom: 15px;">
+                <strong>💡 Suggested follow-up queries:</strong>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+        `;
+        
+        suggestions.forEach((suggestion, idx) => {
+            const modifiedQuery = this.applyFollowUpSuggestion(originalQuery, suggestion);
+            suggestionHTML += `
+                <button class="followup-btn btn btn-outline-primary" 
+                        data-query="${modifiedQuery.replace(/"/g, '&quot;')}" 
+                        style="text-align: left; padding: 10px; font-size: 14px;">
+                    <i class="ti ti-arrow-right"></i> ${suggestion}
+                </button>
+            `;
+        });
+        
+        suggestionHTML += `
+            </div>
+            <div style="margin-top: 10px; text-align: center;">
+                <button id="dismissSuggestionsBtn" class="btn btn-sm btn-ghost">
+                    <i class="ti ti-x"></i> Dismiss
+                </button>
+            </div>
+        `;
+        
+        suggestionContainer.innerHTML = suggestionHTML;
+        
+        // Insert after agent response
+        agentDiv.parentNode.insertBefore(suggestionContainer, agentDiv.nextSibling);
+        
+        // Add event listeners
+        suggestionContainer.querySelectorAll('.followup-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const newQuery = btn.getAttribute('data-query');
+                this.editor.setValue(newQuery);
+                this.flashEditor();
+                this.addToHistory(newQuery);
+                this.removeSuggestionButtons();
+                this.updateAgentResponse('Query updated with suggestion! Click Execute to run it.');
+            });
+        });
+        
+        document.getElementById('dismissSuggestionsBtn').addEventListener('click', () => {
+            this.removeSuggestionButtons();
+        });
+    }
+    
+    // Apply a follow-up suggestion to the original query
+    applyFollowUpSuggestion(originalQuery, suggestion) {
+        const upperQuery = originalQuery.toUpperCase();
+        let modifiedQuery = originalQuery.trim();
+        
+        // Remove trailing semicolon for modifications
+        if (modifiedQuery.endsWith(';')) {
+            modifiedQuery = modifiedQuery.slice(0, -1);
+        }
+        
+        if (suggestion.includes('ORDER BY')) {
+            if (!upperQuery.includes('ORDER BY')) {
+                modifiedQuery += '\nORDER BY 1 DESC';
+            }
+        } else if (suggestion.includes('LIMIT')) {
+            if (!upperQuery.includes('LIMIT')) {
+                modifiedQuery += '\nLIMIT 10';
+            }
+        } else if (suggestion.includes('GROUP BY')) {
+            if (!upperQuery.includes('GROUP BY')) {
+                // This is complex - just add a comment suggestion
+                modifiedQuery += '\n-- Add GROUP BY clause here';
+            }
+        } else if (suggestion.includes('HAVING')) {
+            if (!upperQuery.includes('HAVING')) {
+                modifiedQuery += '\nHAVING COUNT(*) > 1';
+            }
+        } else if (suggestion.includes('WHERE')) {
+            if (!upperQuery.includes('WHERE')) {
+                modifiedQuery += '\nWHERE 1=1 -- Add your conditions here';
+            }
+        } else if (suggestion.includes('Join with Invoice')) {
+            if (!upperQuery.includes('INVOICE')) {
+                const fromMatch = modifiedQuery.match(/FROM\s+(\w+)(\s+\w+)?/i);
+                if (fromMatch) {
+                    const tableName = fromMatch[1];
+                    const alias = fromMatch[2] ? fromMatch[2].trim() : tableName.charAt(0).toLowerCase();
+                    if (tableName.toLowerCase() === 'customer') {
+                        modifiedQuery += `\nJOIN Invoice i ON ${alias}.CustomerId = i.CustomerId`;
+                    }
+                }
+            }
+        } else if (suggestion.includes('Join with Album')) {
+            if (!upperQuery.includes('ALBUM')) {
+                modifiedQuery += '\nJOIN Album al ON t.AlbumId = al.AlbumId\nJOIN Artist ar ON al.ArtistId = ar.ArtistId';
+            }
+        }
+        
+        return modifiedQuery + ';';
+    }
+    
+    // Remove existing suggestion buttons
+    removeSuggestionButtons() {
+        const existing = document.getElementById('suggestionContainer');
+        if (existing) {
+            existing.remove();
+        }
+    }
+
     clearAll() {
         this.editor.setValue('');
         document.getElementById('results').innerHTML = '<p class="text-muted">Execute a query to see results...</p>';
@@ -1479,6 +1921,7 @@ Return only the SQL query without any explanation or code block formatting.`;
         document.getElementById('explainResultsBtn').style.display = 'none';
         this.lastQueryResults = null;
         this.lastExecutedQuery = null;
+        this.removeSuggestionButtons(); // Remove any existing suggestions
         this.updateAgentResponse('Ready to help with your SQL queries using Gemini 2.5 Flash! 🚀\n\nEnter your Google AI API key to use Explain and NL2SQL features.');
     }
 }

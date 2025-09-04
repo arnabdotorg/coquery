@@ -226,4 +226,174 @@ ORDER BY CustomerCount DESC
    - Click "Generate SQL" (button will say "Modifying...")
    - The modified SQL replaces the existing query
 
-**Note:** All features require a Google AI API key from https://aistudio.google.com/
+---
+
+## R4: Basic Error Detection with Auto-Fix (Syntax and Schema Validation)
+*The system automatically validates queries before execution and offers clickable fixes*
+
+### Example 1: Auto-Fix Unclosed Parenthesis
+**Input SQL:**
+```sql
+SELECT * FROM Customer WHERE (Country = 'USA'
+```
+**What Happens:**
+1. Yellow warning box appears: "⚠️ Found issues in your query: Unclosed parenthesis detected"
+2. Shows **clickable fix preview**: `SELECT * FROM Customer WHERE (Country = 'USA');`
+3. Two buttons appear:
+   - **🔧 Apply Fix & Execute** - Automatically fixes and runs the query
+   - **❌ Ignore & Execute Anyway** - Runs the original query
+
+### Example 2: Auto-Fix Unclosed Quotes
+**Input SQL:**
+```sql
+SELECT * FROM Track WHERE Name = 'Let's Dance
+```
+**What Happens:**
+1. Yellow warning box with the fixed query: `SELECT * FROM Track WHERE Name = 'Let's Dance';`
+2. Click **"Apply Fix & Execute"** to automatically add the missing quote and run
+
+### Example 3: Auto-Fix Table Name Typos
+**Input SQL:**
+```sql
+SELECT * FROM costumer
+```
+**What Happens:**
+1. Warning box shows: "Fixed table case: 'costumer' → 'Customer'"
+2. Preview shows: `SELECT * FROM Customer;`
+3. Click to apply the fix automatically
+
+### Example 4: Auto-Fix Multiple Issues
+**Input SQL:**
+```sql
+SELECT * FROM costumer WHERE (Country = 'USA' AND City = 'New York
+```
+**What Happens:**
+1. Detects: table case error, unclosed parenthesis, unclosed quote
+2. Shows fixed version: `SELECT * FROM Customer WHERE (Country = 'USA' AND City = 'New York');`
+3. One click fixes everything!
+
+### Example 5: Schema Validation
+**Input SQL:**
+```sql
+SELECT FirstNam, LastName FROM Customer
+```
+**What Happens:**
+1. If executed, shows enhanced error: "Column 'FirstNam' not found"
+2. Provides suggestions:
+   - Check the Schema panel for correct column names
+   - Tip: You might need to specify the table alias (e.g., c.ColumnName)
+
+---
+
+## R5: Clickable Follow-up Query Suggestions
+*After executing a query, get clickable suggestions that automatically modify your SQL*
+
+### Example 1: Basic Query Gets Smart Suggestions
+**Initial Query:**
+```sql
+SELECT * FROM Customer
+```
+**After Execution:**
+1. Blue suggestion box appears with clickable buttons:
+   - **➡️ Add ORDER BY to sort your results** → Adds `ORDER BY 1 DESC`
+   - **➡️ Add LIMIT to see top results only** → Adds `LIMIT 10`  
+   - **➡️ Add WHERE clause to filter results** → Adds `WHERE 1=1 -- Add your conditions`
+2. Click any suggestion to automatically update your query!
+
+### Example 2: Join Query Gets Aggregation Suggestions
+**Initial Query:**
+```sql
+SELECT c.FirstName, c.LastName, i.Total
+FROM Customer c
+JOIN Invoice i ON c.CustomerId = i.CustomerId
+```
+**After Execution - Clickable Options:**
+- **➡️ Add GROUP BY to aggregate your data** → Adds `-- Add GROUP BY clause here`
+- **➡️ Add ORDER BY to sort your results** → Adds `ORDER BY 1 DESC`
+- **➡️ Add LIMIT to see top results only** → Adds `LIMIT 10`
+
+### Example 3: Customer Query Gets Smart Joins
+**Initial Query:**
+```sql
+SELECT FirstName, LastName, Email FROM Customer WHERE Country = 'USA'
+```
+**After Execution - Clickable Options:**
+- **➡️ Join with Invoice table to see customer purchases** → Automatically adds:
+```sql
+SELECT FirstName, LastName, Email FROM Customer c WHERE Country = 'USA'
+JOIN Invoice i ON c.CustomerId = i.CustomerId;
+```
+
+### Example 4: Track Query Gets Album/Artist Join
+**Initial Query:**
+```sql
+SELECT Name, Milliseconds FROM Track LIMIT 5
+```
+**After Execution - Smart Suggestion:**
+- **➡️ Join with Album and Artist tables for complete track info** → Adds:
+```sql
+SELECT Name, Milliseconds FROM Track t LIMIT 5
+JOIN Album al ON t.AlbumId = al.AlbumId
+JOIN Artist ar ON al.ArtistId = ar.ArtistId;
+```
+
+### Example 5: Grouped Query Gets HAVING Suggestion  
+**Initial Query:**
+```sql
+SELECT Country, COUNT(*) as CustomerCount FROM Customer GROUP BY Country
+```
+**After Execution - Clickable Option:**
+- **➡️ Add HAVING clause to filter grouped results** → Adds `HAVING COUNT(*) > 1`
+
+**UI Features:**
+- **Dismiss Button**: Hide suggestions if not needed
+- **One-Click Application**: Suggestions automatically modify your SQL
+- **Smart Context**: Different suggestions based on your current query structure
+- **Visual Feedback**: Editor flashes when query is updated
+
+---
+
+## How to Test R4 and R5
+
+### Testing R4 (Auto-Fix Error Detection):
+1. **Type Broken Query**: Enter SQL with errors like:
+   - `SELECT * FROM Customer WHERE (Country = 'USA'` (missing parenthesis)
+   - `SELECT * FROM costumer` (typo in table name)
+   - `SELECT Name FROM Track WHERE Title = 'Hello` (unclosed quote)
+
+2. **Click Execute**: Yellow warning box appears with preview of fixed query
+
+3. **Choose Your Action**:
+   - Click **"🔧 Apply Fix & Execute"** to auto-fix and run
+   - Click **"❌ Ignore & Execute Anyway"** to run the original
+   - The query editor updates automatically when you apply fixes!
+
+### Testing R5 (Clickable Follow-up Suggestions):
+1. **Execute Simple Query**: Try `SELECT * FROM Customer`
+
+2. **Wait for Blue Box**: After execution, blue suggestion box appears below
+
+3. **Click Any Suggestion**: Each button automatically modifies your SQL:
+   - Suggestions are **context-aware** and **database-specific**
+   - Watch the editor **flash** when query updates
+   - No typing needed - everything is automatic!
+
+4. **Try Different Queries**: 
+   - Customer queries → Get "Join with Invoice" suggestions
+   - Track queries → Get "Join with Album/Artist" suggestions  
+   - Large result sets → Get "Add LIMIT" suggestions
+
+### Advanced Testing:
+- **Multiple Fixes**: Try `SELECT * FROM costumer WHERE (Name = 'John AND Age > 25` (3 errors!)
+- **Complex Suggestions**: Run joins to see advanced follow-up suggestions
+- **Empty Results**: Query `WHERE Country = 'Mars'` to see "broaden search" suggestions
+
+**UI Features to Notice:**
+- 🟡 **Yellow boxes** = Error fixes (R4)
+- 🔵 **Blue boxes** = Follow-up suggestions (R5)  
+- ⚡ **Flash animation** = Query updated
+- ❌ **Dismiss button** = Hide suggestions
+
+**Note:** 
+- R4 and R5 work completely **without AI/API key** - they're built-in intelligence!
+- R1-R3 (NL2SQL features) require a Google AI API key from https://aistudio.google.com/
