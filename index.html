@@ -99,6 +99,42 @@
             0% { background-color: #fff3cd; filter: blur(2px); }
             100% { background-color: transparent; filter: blur(0); }
         }
+        .github-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.9rem;
+            border-radius: 9999px;
+            background-color: #111;
+            color: #fff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+        .github-button:hover {
+            background-color: #000;
+            color: #fff;
+            text-decoration: none;
+            transform: translateY(-1px);
+        }
+        .github-button:focus-visible {
+            outline: 2px solid rgba(255, 255, 255, 0.6);
+            outline-offset: 2px;
+        }
+        .github-button .github-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 9999px;
+            background-color: #fff;
+            color: #111;
+        }
+        .github-button .github-icon i[data-feather] {
+            width: 18px;
+            height: 18px;
+        }
     </style>
 </head>
 <body class="theme-light">
@@ -106,10 +142,23 @@
         <!-- Header -->
         <header class="navbar navbar-expand-md navbar-light d-print-none">
             <div class="container-xl">
-                <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
-                    <i class="ti ti-database"></i>
-                    CoQuery: AI-Powered SQL Editor
-                </h1>
+                <div class="d-flex align-items-center w-100">
+                    <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3 mb-0">
+                        <i class="ti ti-database"></i>
+                        CoQuery: AI-Powered SQL Editor
+                    </h1>
+                    <a
+                        href="https://github.com/arnabdotorg/coquery"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="github-button ms-auto"
+                    >
+                        <span class="github-icon">
+                            <i data-feather="github"></i>
+                        </span>
+                        <span class="github-label">Github Code</span>
+                    </a>
+                </div>
             </div>
         </header>
 
@@ -308,7 +357,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/closebrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/selection/active-line.min.js"></script>
-    
+
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.feather) {
+                feather.replace();
+            }
+        });
+    </script>
+
     <script src="./script.js"></script>
 </body>
 </html>
